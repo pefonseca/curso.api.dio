@@ -1,0 +1,5 @@
+﻿SELECT TOP (1000) [Codigo]
+	,[Nome]
+	,[Descricao]
+	,[CodigoUsuario]
+	FROM [Curso].[dbo].[TB_CURSO]

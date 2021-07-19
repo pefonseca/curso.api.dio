@@ -1,14 +1,18 @@
-﻿using curso.api.Filters;
+﻿using curso.api.Business.Entities;
+using curso.api.Business.Repositories;
+using curso.api.Configurations;
+using curso.api.Filters;
 using curso.api.Models;
 using curso.api.Models.Usuarios;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using Swashbuckle.AspNetCore.Annotations;
 using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace curso.api.Controllers
 {
@@ -16,6 +20,16 @@ namespace curso.api.Controllers
     [ApiController]
     public class UsuarioController : ControllerBase
     {
+        private readonly IUsuarioRepository _usuarioRepository;
+        private readonly IAuthenticationService _authenticationService;
+
+        public UsuarioController(
+            IUsuarioRepository usuarioRepository, 
+            IAuthenticationService autenticationService)
+        {
+            _usuarioRepository = usuarioRepository;
+            _authenticationService = autenticationService;
+        }
         /// <summary>
         /// Este serviço permite autenticar um usuário cadastrado e ativo.
         /// </summary>
@@ -27,36 +41,28 @@ namespace curso.api.Controllers
         [HttpPost]
         [Route("logar")]
         [ValidacaoModelStateCustomizado]
-        public IActionResult Logar(LoginViewModelInput loginViewModelInput)
+        public async Task<IActionResult> Logar(LoginViewModelInput loginViewModelInput)
         {
-            //if (!ModelState.IsValid)
+            var usuario = await _usuarioRepository.ObterUsuarioAsync(loginViewModelInput.Login);
+
+            if (usuario == null)
+            {
+                return BadRequest("Houve um erro ao tentar acessar.");
+            }
+
+            //if (usuario.Senha != loginViewModelInput.Senha.GerarSenhaCriptografada())
             //{
-            //    return BadRequest(new ValidaCampoViewModelOutput(ModelState.SelectMany(sm => sm.Value.Errors).Select(s => s.ErrorMessage)));
+            //    return BadRequest("Houve um erro ao tentar acessar.");
             //}
 
             var usuarioViewModelOutput = new UsuarioViewModelOutput()
             {
-                Codigo = 1,
-                Login = "pedrofonseca",
-                Email = "pedrofonunes@gmail.com"
+                Codigo = usuario.Codigo,
+                Login = loginViewModelInput.Login,
+                Email = usuario.Email
             };
 
-            var secret = Encoding.ASCII.GetBytes("MzfsT&d9gprP>!9$Es(X!5g@;ef!5sbk:jH\\2.}8ZP'qY#7");
-            var symmetricSecurityKey = new SymmetricSecurityKey(secret);
-            var securityTokenDescriptor = new SecurityTokenDescriptor
-            {
-                Subject = new ClaimsIdentity(new Claim[]
-                {
-                    new Claim(ClaimTypes.NameIdentifier, usuarioViewModelOutput.Codigo.ToString()),
-                    new Claim(ClaimTypes.Name, usuarioViewModelOutput.Login.ToString()),
-                    new Claim(ClaimTypes.Email, usuarioViewModelOutput.Email.ToString())
-                }),
-                Expires = DateTime.UtcNow.AddDays(1),
-                SigningCredentials = new SigningCredentials(symmetricSecurityKey, SecurityAlgorithms.HmacSha256Signature)
-            };
-            var jwtSecurityTokenHandler = new JwtSecurityTokenHandler();
-            var tokenGenerated = jwtSecurityTokenHandler.CreateToken(securityTokenDescriptor);
-            var token = jwtSecurityTokenHandler.WriteToken(tokenGenerated);
+            var token = _authenticationService.GerarToken(usuarioViewModelOutput);
 
             return Ok(new 
             { 
@@ -65,11 +71,41 @@ namespace curso.api.Controllers
             });
         }
 
+        /// <summary>
+        /// Este serviço permite cadastrar um usuário cadastrado não existente.
+        /// </summary>
+        /// <param name="loginViewModelInput">View model do registro de login</param>
+        [SwaggerResponse(statusCode: 200, description: "Sucesso ao autenticar", Type = typeof(LoginViewModelInput))]
+        [SwaggerResponse(statusCode: 400, description: "Campos obritórios", Type = typeof(ValidaCampoViewModelOutput))]
+        [SwaggerResponse(statusCode: 500, description: "Erro interno", Type = typeof(ErroGenericoViewModel))]
         [HttpPost]
         [Route("registrar")]
         [ValidacaoModelStateCustomizado]
-        public IActionResult Registrar(RegistroViewModelInput loginViewModelInput)
+        public async Task<IActionResult> Registrar(RegistroViewModelInput loginViewModelInput)
         {
+
+
+            //var migracoesPendentes = contexto.Database.GetPendingMigrations();
+
+            //if (migracoesPendentes.Count() > 0)
+            //{
+            //    contexto.Database.Migrate();
+            //}
+
+            var usuario = await _usuarioRepository.ObterUsuarioAsync(loginViewModelInput.Login);
+
+            if(usuario != null)
+            {
+                return BadRequest("Usuário já cadastrado");
+            }
+
+            usuario = new Usuario();
+            usuario.Login = loginViewModelInput.Login;
+            usuario.Senha = loginViewModelInput.Senha;
+            usuario.Email = loginViewModelInput.Email;
+            _usuarioRepository.Adicionar(usuario);
+            _usuarioRepository.Commit();
+
             return Created("", loginViewModelInput);
         }
     }

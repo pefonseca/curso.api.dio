@@ -1,0 +1,5 @@
+﻿SELECT TOP (1000) [Codigo]
+	,[Login]
+	,[Email]
+	,[Senha]
+	FROM [Curso].[dbo].[TB_USUARIO]
